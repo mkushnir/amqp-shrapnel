@@ -21,7 +21,7 @@ def unpack_octet (data, pos):
     return U ('>b', data, pos)
 
 def unpack_bool (data, pos):
-    return U ('>?', data, pos)
+    return U ('>b', data, pos)
 
 def unpack_short (data, pos):
     return U ('>h', data, pos)
@@ -65,7 +65,7 @@ def unpack_field_value (data, pos):
     # most field-type indicators are directly equal to their struct letters.
     # we'll handle the exceptions first, then fall back to struct for the rest.
     if ftype == 't':
-        fval, pos = U ('>?', data, pos)
+        fval, pos = U ('>b', data, pos)
     elif ftype == 'D':
         fval, pos = U ('>BL', data, pos)
     elif ftype == 's':
@@ -107,7 +107,7 @@ def pack_octet (v):
     return struct.pack ('>b', v)
 
 def pack_bool (v):
-    return struct.pack ('>?', v)
+    return struct.pack ('>b', v)
 
 def pack_short (v):
     return struct.pack ('>h', v)

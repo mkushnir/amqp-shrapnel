@@ -94,7 +94,7 @@ class client:
         self.buffer = self.s.recv (self.buffer_size)
         if self.buffer.startswith ('AMQP'):
             # server rejection
-            raise AMQPError (
+            raise ProtocolError (
                 "version mismatch: server wants %r" % (
                     struct.unpack ('>4B', self.buffer[4:8])
                     )
@@ -438,7 +438,8 @@ class channel:
         self.consumers[con.tag] = con
 
     def forget_consumer (self, tag):
-        del self.consumers[tag]
+        if tag in self.consumers:
+            del self.consumers[tag]
 
     def notify_consumers_of_close (self):
         for _, con in self.consumers.iteritems():

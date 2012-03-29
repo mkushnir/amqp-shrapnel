@@ -27,6 +27,9 @@ class server:
         self.consumer = self.channel.basic_consume (queue=self.queue)
         coro.spawn (self.request_thread)
 
+    def handle_request(self, props, data):
+        raise NotImplementedError
+
     def cancel (self):
         self.consumer.cancel()
 
