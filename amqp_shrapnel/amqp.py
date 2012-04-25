@@ -340,6 +340,15 @@ class channel:
             assert channel == self.num
             return frame
 
+    def queue_delete (self, queue='', if_unused=False, if_empty=False, nowait=False):
+        "http://www.rabbitmq.com/amqp-0-9-1-reference.html#queue.delete"
+        frame = spec.queue.delete (0, queue, if_unused, if_empty, nowait)
+        self.send_frame (spec.FRAME_METHOD, frame)
+        if not nowait:
+            ftype, channel, frame = self.conn.expect_frame (spec.FRAME_METHOD, 'queue.delete_ok')
+            assert channel == self.num
+            return frame
+
     def queue_bind (self, queue='', exchange=None, routing_key='', nowait=False, arguments={}):
         "http://www.rabbitmq.com/amqp-0-9-1-reference.html#queue.bind"
         frame = spec.queue.bind (0, queue, exchange, routing_key, nowait, arguments)
