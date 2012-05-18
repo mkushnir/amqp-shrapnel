@@ -15,10 +15,27 @@ is_a = isinstance
 
 W = sys.stderr.write
 
+def hd(s):
+    return ''.join('%02x ' % (ord(i)) for i in s)
+
+
 class ProtocolError (Exception):
     pass
 class UnexpectedClose (Exception):
     pass
+
+class UnknownConsumerTag (ProtocolError):
+    def __init__(self, frame, props, data):
+        self.frame = frame
+        self.properties = props
+        self.data = data
+
+class UnexpectedFrame (ProtocolError):
+    def __init__(self, names, ftype, channel, frame):
+        self.names = names
+        self.ftype = ftype
+        self.channel = channel
+        self.frame = frame
 
 def dump_ob (ob):
     W ('%s {\n' % (ob._name,))
@@ -28,6 +45,9 @@ def dump_ob (ob):
 
 # sentinel for consumer fifos
 connection_closed = 'connection closed'
+consumer_cancelled = 'consumer cancelled'
+
+_DEBUG_BASIC_ACK_DELAY = 0
 
 class client:
 
@@ -56,7 +76,7 @@ class client:
             }
         }
 
-    def __init__ (self, auth, host, port=5672, virtual_host='/', heartbeat=0):
+    def __init__ (self, auth, host, port=5672, virtual_host='/', heartbeat=0, consumer_cancel_notify=False):
         self.port = port
         self.host = host
         self.auth = auth
@@ -72,6 +92,15 @@ class client:
         self.closed_cv = coro.condition_variable()
         self.last_send = coro.now
         self.channels = {}
+        self._exception_handler = None
+        if consumer_cancel_notify:
+            self.properties['capabilities']['consumer_cancel_notify'] = True
+        # XXX implement read/write "channels" (coro).
+        self._s_recv_sema = coro.semaphore(1)
+        self._s_send_sema = coro.semaphore(1)
+
+    def set_exception_handler(self, h):
+        self._exception_handler = h
 
     # state diagram for connection objects:
     #
@@ -90,7 +119,11 @@ class client:
         "Connect to the server.  Spawns a new thread to monitor the connection."
         self.s = coro.tcp_sock()
         self.s.connect ((self.host, self.port))
-        self.s.send ('AMQP' + struct.pack ('>BBBB', *self.version))
+        self._s_send_sema.acquire(1)
+        try:
+            self.s.send ('AMQP' + struct.pack ('>BBBB', *self.version))
+        finally:
+            self._s_send_sema.release(1)
         self.buffer = self.s.recv (self.buffer_size)
         if self.buffer.startswith ('AMQP'):
             # server rejection
@@ -136,11 +169,16 @@ class client:
 
     def expect_frame (self, ftype, *names):
         "read/expect a frame from the list *names*"
-        ftype, channel, frame = self.frames.pop()
-        if frame._name not in names:
-            raise ProtocolError ("expected %r frame, got %r" % (names, frame._name))
-        else:
-            return ftype, channel, frame
+        while True:
+            ftype, channel, frame = self.frames.pop()
+            if frame._name not in names:
+                if self._exception_handler:
+                    self._exception_handler(UnexpectedFrame(names, ftype, channel, frame))
+                    continue
+                else:
+                    raise UnexpectedFrame(names, ftype, channel, frame)
+            else:
+                return ftype, channel, frame
 
     def secs_since_send (self):
         return (coro.now - self.last_send) / coro.ticks_per_sec
@@ -151,10 +189,14 @@ class client:
                 while 1:
                     while len (self.buffer):
                         self.unpack_frame()
-                    if self.heartbeat:
-                        block = coro.with_timeout (self.heartbeat * 2, self.s.recv, self.buffer_size)
-                    else:
-                        block = self.s.recv (self.buffer_size)
+                    self._s_recv_sema.acquire(1)
+                    try:
+                        if self.heartbeat:
+                            block = coro.with_timeout (self.heartbeat * 2, self.s.recv, self.buffer_size)
+                        else:
+                            block = self.s.recv (self.buffer_size)
+                    finally:
+                        self._s_recv_sema.release(1)
                     if not block:
                         break
                     else:
@@ -183,12 +225,16 @@ class client:
             # we need to fetch more data
             # <head> <payload> <end>
             # [++++++++++][--------]
-            payload = self.buffer[7:] + self.s.recv_exact (size - (len(self.buffer) - 7))
-            # fetch the frame end separately
-            if self.s.recv_exact (1) != '\xce':
-                raise ProtocolError ("missing frame end")
-            else:
-                self.buffer = ''
+            self._s_recv_sema.acquire(1)
+            try:
+                payload = self.buffer[7:] + self.s.recv_exact (size - (len(self.buffer) - 7))
+                # fetch the frame end separately
+                if self.s.recv_exact (1) != '\xce':
+                    raise ProtocolError ("missing frame end")
+                else:
+                    self.buffer = ''
+            finally:
+                self._s_recv_sema.release(1)
         # -------------------------------------------
         # we have the payload, what do we do with it?
         # -------------------------------------------
@@ -206,12 +252,20 @@ class client:
                     W ('warning, dropping delivery for unknown channel #%d consumer_tag=%r\n' % (chan, ob.consumer_tag))
                 else:
                     self.next_content_consumer = (ob, ch)
+            elif self.properties['capabilities'].get('consumer_cancel_notify') and is_a (ob, spec.basic.cancel):
+                # This is meant to be the last message for this consumer
+                # http://www.rabbitmq.com/extensions.html#consumer-cancel-notify
+                ch = self.channels.get (chan, None)
+                if ch is None:
+                    W ('warning, dropping basic.cancel for unknown channel #%d consumer_tag=%r\n' % (chan, ob.consumer_tag))
+                else:
+                    ch.notify_consumer_of_cancel(ob.consumer_tag)
             else:
                 self.frames.push ((ftype, chan, ob))
         elif ftype == spec.FRAME_HEADER:
             cid, weight, size, flags = struct.unpack ('>hhqH', payload[:14])
-            #W ('<<< HEADER: cid=%d weight=%d size=%d flags=%x payload=%r\n' % (cid, weight, size, flags, payload))
-            #W ('<<< self.buffer=%r\n' % (self.buffer,))
+            #W ('<<< HEADER: cid=%d weight=%d size=%d flags=%x payload=%r\n' % (cid, weight, size, flags, hd(payload)))
+            #W ('<<< self.buffer=%r\n' % (hd(self.buffer),))
             if flags:
                 self.next_properties = unpack_properties (flags, payload[14:])
             else:
@@ -240,16 +294,22 @@ class client:
     def send_frame (self, ftype, channel, ob):
         "send a frame of type *ftype* on this channel.  *ob* is a frame object built by the <spec> module"
         f = []
+        #W ('ftype=%s\n' % (ftype,))
         if ftype == spec.FRAME_METHOD:
+            #dump_ob(ob)
             payload = struct.pack ('>hh', *ob.id) + ob.pack()
         elif ftype in (spec.FRAME_HEADER, spec.FRAME_BODY, spec.FRAME_HEARTBEAT):
             payload = ob
         else:
             raise ProtocolError ("unhandled frame type: %r" % (ftype,))
         frame = struct.pack ('>BHL', ftype, channel, len (payload)) + payload + chr(spec.FRAME_END)
-        self.s.send (frame)
+        #W ('>>> send_frame: %s ...\n' % (hd(frame),))
+        self._s_send_sema.acquire(1)
+        try:
+            self.s.send (frame)
+        finally:
+            self._s_send_sema.release(1)
         self.last_send = coro.now
-        #W ('>>> send_frame: %r %d\n' % (frame, r))
 
     def close (self, reply_code=200, reply_text='normal shutdown', class_id=0, method_id=0):
         "http://www.rabbitmq.com/amqp-0-9-1-reference.html#connection.close"
@@ -267,6 +327,7 @@ class client:
         http://www.rabbitmq.com/amqp-0-9-1-reference.html#connection.channel
         """
         chan = channel (self)
+        chan.set_exception_handler(self._exception_handler)
         self.send_frame (spec.FRAME_METHOD, chan.num, spec.channel.open (out_of_band))
         ftype, chan_num, frame = self.expect_frame (spec.FRAME_METHOD, 'channel.open_ok')
         assert chan_num == chan.num
@@ -311,7 +372,11 @@ class channel:
         self.confirm_mode = False
         self.consumers = {}
         channel.counter += 1
-        
+        self._exception_handler = None
+
+    def set_exception_handler(self, h):
+        self._exception_handler = h
+
     def send_frame (self, ftype, frame):
         self.conn.send_frame (ftype, self.num, frame)
 
@@ -432,9 +497,12 @@ class channel:
     def accept_delivery (self, frame, properties, data):
         probe = self.consumers.get (frame.consumer_tag, None)
         if probe is None:
-            W ('received data for unknown consumer tag: %r\n' % (frame.consumer_tag,))
             if self.ack_discards:
                 self.basic_ack (frame.delivery_tag)
+            if self._exception_handler:
+                self._exception_handler(UnknownConsumerTag(frame, properties, data))
+            else:
+                W('unknown consumer tag: %s\n' % frame.consumer_tag)
         else:
             probe.push ((frame, properties, data))
 
@@ -454,12 +522,20 @@ class channel:
         for _, con in self.consumers.iteritems():
             con.close()
 
+    def notify_consumer_of_cancel(self, tag):
+        if tag in self.consumers:
+            self.consumers[tag].set_cancelled()
+            self.forget_consumer(tag)
+
     def notify_of_close (self):
         self.notify_consumers_of_close()
 
     # rabbit mq extension
     def confirm_select (self, nowait=False):
         "http://www.rabbitmq.com/amqp-0-9-1-reference.html#confirm.select"
+        if self.conn.properties["capabilities"].get("consumer_cancel_notify"):
+            if not self.conn.server_properties["capabilities"].get("consumer_cancel_notify"):
+                raise ProtocolError ("server capabilities says NO to consumer_cancel_notify")
         try:
             if self.conn.server_properties['capabilities']['publisher_confirms'] != True:
                 raise ProtocolError ("server capabilities says NO to publisher_confirms")
@@ -504,6 +580,10 @@ def unpack_properties (flags, data):
 class AMQP_Consumer_Closed (Exception):
     pass
 
+# Signal of the need to re-create consumer.
+class AMQP_Consumer_Cancelled (Exception):
+    pass
+
 class consumer:
 
     """The consumer object manages the consumption of messages triggered by a call to basic.consume.
@@ -525,6 +605,9 @@ class consumer:
         self.closed = True
         self.channel.forget_consumer (self)
 
+    def set_cancelled(self):
+        self.fifo.push(consumer_cancelled)
+
     def cancel (self):
         "cancel the basic.consume() call that created this consumer"
         self.closed = True
@@ -542,8 +625,13 @@ class consumer:
             if probe == connection_closed:
                 self.closed = True
                 raise AMQP_Consumer_Closed
+            elif probe == consumer_cancelled:
+                raise AMQP_Consumer_Cancelled
             else:
                 frame, properties, data = probe
                 if ack:
+                    if _DEBUG_BASIC_ACK_DELAY:
+                        W('sleeping for _DEBUG_BASIC_ACK_DELAY=%d\n' % _DEBUG_BASIC_ACK_DELAY)
+                        coro.sleep_relative(_DEBUG_BASIC_ACK_DELAY)
                     self.channel.basic_ack (frame.delivery_tag)
                 return frame, properties, ''.join (data)

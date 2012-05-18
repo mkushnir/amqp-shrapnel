@@ -107,7 +107,7 @@ class client:
                 #W ('reply thread: got one: %r\n' % (cid,))
                 probe = self.pending.get (cid, None)
                 if probe is None:
-                    W ('dropping unknown correlation-id: %r' % (cid,))
+                    W ('dropping unknown correlation-id: %r\n' % (cid,))
                 else:
                     del self.pending[cid]
                     coro.schedule (probe, (frame, props, data))
