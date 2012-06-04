@@ -76,7 +76,7 @@ class client:
             }
         }
 
-    def __init__ (self, auth, host, port=5672, virtual_host='/', heartbeat=0, consumer_cancel_notify=False):
+    def __init__ (self, auth, host, port=5672, virtual_host='/', heartbeat=0, consumer_cancel_notify=None):
         self.port = port
         self.host = host
         self.auth = auth
@@ -93,8 +93,7 @@ class client:
         self.last_send = coro.now
         self.channels = {}
         self._exception_handler = None
-        if consumer_cancel_notify:
-            self.properties['capabilities']['consumer_cancel_notify'] = True
+        self.consumer_cancel_notify = consumer_cancel_notify
         # XXX implement read/write "channels" (coro).
         self._s_recv_sema = coro.semaphore(1)
         self._s_send_sema = coro.semaphore(1)
@@ -140,6 +139,20 @@ class client:
             #dump_ob (frame)
             mechanisms = frame.mechanisms.split()
             self.server_properties = frame.server_properties
+
+            if self.consumer_cancel_notify is None:
+                # adjsut to the server properties
+                if self.server_properties['capabilities'].get('consumer_cancel_notify'):
+                    self.consumer_cancel_notify = True
+                    self.properties['capabilities']['consumer_cancel_notify'] = True
+
+            else:
+                if self.consumer_cancel_notify:
+                    if not self.server_properties['capabilities'].get('consumer_cancel_notify'):
+                        raise ProtocolError ('server capabilities says NO to consumer_cancel_notify')
+                    self.properties['capabilities']['consumer_cancel_notify'] = True
+
+
             if 'PLAIN' in mechanisms:
                 response = '\x00%s\x00%s' % self.auth
             else:
@@ -533,9 +546,6 @@ class channel:
     # rabbit mq extension
     def confirm_select (self, nowait=False):
         "http://www.rabbitmq.com/amqp-0-9-1-reference.html#confirm.select"
-        if self.conn.properties["capabilities"].get("consumer_cancel_notify"):
-            if not self.conn.server_properties["capabilities"].get("consumer_cancel_notify"):
-                raise ProtocolError ("server capabilities says NO to consumer_cancel_notify")
         try:
             if self.conn.server_properties['capabilities']['publisher_confirms'] != True:
                 raise ProtocolError ("server capabilities says NO to publisher_confirms")
