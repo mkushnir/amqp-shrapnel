@@ -334,10 +334,9 @@ class client:
             spec.connection.close (reply_code, reply_text, class_id, method_id)
             )
         ftype, channel, frame = self.expect_frame (spec.FRAME_METHOD, 'connection.close_ok')
-        self.closed_cv.wake_all()
         self._recv_loop_thread.shutdown()
         self._recv_loop_thread.join()
-        self.s.close()
+        self._recv_loop_thread = None
 
     def channel (self, out_of_band=''):
         """Create a new channel on this connection.
