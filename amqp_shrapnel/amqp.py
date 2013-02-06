@@ -90,9 +90,11 @@ class client:
         self.next_properties = None
         self.consumers = {}
         self.closed_cv = coro.condition_variable()
-        self.last_send = coro.now
+        self.last_send = coro.tsc_time.now_raw_posix_fsec()
         self.channels = {}
         self._exception_handler = None
+        self._send_completion_handler = None
+        self._recv_completion_handler = None
         self.consumer_cancel_notify = consumer_cancel_notify
         # XXX implement read/write "channels" (coro).
         self._recv_loop_thread = None
@@ -101,6 +103,12 @@ class client:
 
     def set_exception_handler(self, h):
         self._exception_handler = h
+
+    def set_send_completion_handler(self, h):
+        self._send_completion_handler = h
+
+    def set_recv_completion_handler(self, h):
+        self._recv_completion_handler = h
 
     # state diagram for connection objects:
     #
@@ -192,10 +200,12 @@ class client:
                 else:
                     raise UnexpectedFrame(names, ftype, channel, frame)
             else:
+                if self._recv_completion_handler:
+                    self._recv_completion_handler(self, ftype, channel, frame)
                 return ftype, channel, frame
 
     def secs_since_send (self):
-        return (coro.now - self.last_send) / coro.ticks_per_sec
+        return coro.tsc_time.now_raw_posix_fsec() - self.last_send
 
     def recv_loop (self):
         try:
@@ -323,7 +333,9 @@ class client:
             self.s.send (frame)
         finally:
             self._s_send_sema.release(1)
-        self.last_send = coro.now
+        self.last_send = coro.tsc_time.now_raw_posix_fsec()
+        if self._send_completion_handler:
+            self._send_completion_handler(self, ftype, channel)
 
     def close (self, reply_code=200, reply_text='normal shutdown', class_id=0, method_id=0):
         "http://www.rabbitmq.com/amqp-0-9-1-reference.html#connection.close"
