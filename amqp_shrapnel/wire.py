@@ -138,7 +138,7 @@ def pack_table (d):
             if neg:
                 v = -v
             if v < 1<<8:
-                spec = 'B', 'b', 'B'
+                spec = 'B', 'B', 'b'
             elif v < 1<<16:
                 spec = 'H', 'H', 'h'
             elif v < 1<<32:
