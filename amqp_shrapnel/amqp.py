@@ -89,7 +89,6 @@ class client:
         self.next_content_consumer = None
         self.next_properties = None
         self.consumers = {}
-        self.closed_cv = coro.condition_variable()
         self.last_send = coro.tsc_time.now_raw_posix_fsec()
         self.channels = {}
         self._exception_handler = None
@@ -233,7 +232,6 @@ class client:
                 pass
         finally:
             self.notify_channels_of_close()
-            self.closed_cv.wake_all()
             self.s.close()
 
     def unpack_frame (self):
@@ -349,6 +347,12 @@ class client:
         self._recv_loop_thread.shutdown()
         self._recv_loop_thread.join()
         self._recv_loop_thread = None
+        # try a double-close in case it had failed during the thread
+        # shutdown.
+        try:
+            self.s.close()
+        except:
+            pass
 
     def channel (self, out_of_band=''):
         """Create a new channel on this connection.
