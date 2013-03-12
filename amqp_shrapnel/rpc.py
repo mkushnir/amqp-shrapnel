@@ -114,4 +114,5 @@ class client:
         except:
             W ('exiting rpc reply thread\n')
             for k, v in self.pending.iteritems():
-                v.raise_exception (RPC_Client_Error)
+                if not v.dead:
+                    v.raise_exception (RPC_Client_Error)
