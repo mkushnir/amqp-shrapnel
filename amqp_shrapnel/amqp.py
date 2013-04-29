@@ -230,6 +230,9 @@ class client:
                 # two heartbeat periods have expired with no data, so we let the
                 #   connection close.  XXX Should we bother trying to call connection.close()?
                 pass
+            except Exception, e:
+                if self._exception_handler:
+                    self._exception_handler(e)
         finally:
             self.notify_channels_of_close()
             self.s.close()
