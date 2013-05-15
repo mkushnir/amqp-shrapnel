@@ -3,7 +3,7 @@
 from setuptools import setup, find_packages
 setup (
     name              = 'amqp_shrapnel',
-    version           = '0.5.2',
+    version           = '0.5.3',
     packages          = find_packages(),
     author            = 'Sam Rushing',
     description       = "AMQP for Shrapnel",
