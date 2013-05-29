@@ -15,6 +15,8 @@ is_a = isinstance
 
 W = sys.stderr.write
 
+__version__ = '0.5.3'
+
 def hd(s):
     return ''.join('%02x ' % (ord(i)) for i in s)
 
@@ -69,7 +71,7 @@ class client:
     buffer_size = 4000
     properties = {
         'product':'AMQP/shrapnel',
-        'version':'0.5',
+        'version':__version__,
         'information':'https://github.com/samrushing/amqp-shrapnel',
         'capabilities': {
             'publisher_confirms':True,

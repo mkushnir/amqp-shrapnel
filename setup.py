@@ -1,9 +1,11 @@
 # -*- Mode: Python -*-
 
 from setuptools import setup, find_packages
+import amqp_shrapnel
+
 setup (
     name              = 'amqp_shrapnel',
-    version           = '0.5.3',
+    version           = amqp_shrapnel.__version__,
     packages          = find_packages(),
     author            = 'Sam Rushing',
     description       = "AMQP for Shrapnel",
