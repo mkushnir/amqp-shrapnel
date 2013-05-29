@@ -49,8 +49,6 @@ def dump_ob (ob):
 connection_closed = 'connection closed'
 consumer_cancelled = 'consumer cancelled'
 
-_DEBUG_BASIC_ACK_DELAY = 0
-
 class client:
 
     """*auth*: is a tuple of (username, password) for the 'PLAIN' authentication mechanism.
@@ -665,8 +663,5 @@ class consumer:
             else:
                 frame, properties, data = probe
                 if ack:
-                    if _DEBUG_BASIC_ACK_DELAY:
-                        W('sleeping for _DEBUG_BASIC_ACK_DELAY=%d\n' % _DEBUG_BASIC_ACK_DELAY)
-                        coro.sleep_relative(_DEBUG_BASIC_ACK_DELAY)
                     self.channel.basic_ack (frame.delivery_tag)
                 return frame, properties, ''.join (data)
