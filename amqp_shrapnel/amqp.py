@@ -15,7 +15,7 @@ is_a = isinstance
 
 W = sys.stderr.write
 
-__version__ = '0.5.3'
+__version__ = '0.5.4'
 
 def hd(s):
     return ''.join('%02x ' % (ord(i)) for i in s)
