@@ -431,7 +431,10 @@ class channel:
         self.send_frame (spec.FRAME_METHOD, frame)
         if not nowait:
             ftype, channel, frame = self.conn.expect_frame (spec.FRAME_METHOD, 'exchange.declare_ok')
-            assert channel == self.num
+            if channel != self.num:
+                raise ProtocolError('exchange.declare_ok returned '
+                                    'channel # %d, expected %d' %
+                                    (channel, self.num))
             return frame
 
     def queue_declare (self, queue='', passive=False, durable=False,
@@ -441,7 +444,10 @@ class channel:
         self.send_frame (spec.FRAME_METHOD, frame)
         if not nowait:
             ftype, channel, frame = self.conn.expect_frame (spec.FRAME_METHOD, 'queue.declare_ok')
-            assert channel == self.num
+            if channel != self.num:
+                raise ProtocolError('queue.declare_ok returned '
+                                    'channel # %d, expected %d' %
+                                    (channel, self.num))
             return frame
 
     def queue_delete (self, queue='', if_unused=False, if_empty=False, nowait=False):
@@ -450,7 +456,10 @@ class channel:
         self.send_frame (spec.FRAME_METHOD, frame)
         if not nowait:
             ftype, channel, frame = self.conn.expect_frame (spec.FRAME_METHOD, 'queue.delete_ok')
-            assert channel == self.num
+            if channel != self.num:
+                raise ProtocolError('queue.delete_ok returned '
+                                    'channel # %d, expected %d' %
+                                    (channel, self.num))
             return frame
 
     def queue_bind (self, queue='', exchange=None, routing_key='', nowait=False, arguments={}):
@@ -459,7 +468,10 @@ class channel:
         self.send_frame (spec.FRAME_METHOD, frame)
         if not nowait:
             ftype, channel, frame = self.conn.expect_frame (spec.FRAME_METHOD, 'queue.bind_ok')
-            assert channel == self.num
+            if channel != self.num:
+                raise ProtocolError('queue.bind_ok returned '
+                                    'channel # %d, expected %d' %
+                                    (channel, self.num))
             return frame
 
     def basic_consume (self, queue='', consumer_tag='', no_local=False,
@@ -474,7 +486,10 @@ class channel:
         frame = spec.basic.consume (0, queue, consumer_tag, no_local, no_ack, exclusive, False, arguments)
         self.send_frame (spec.FRAME_METHOD, frame)
         ftype, channel, frame = self.conn.expect_frame (spec.FRAME_METHOD, 'basic.consume_ok')
-        assert channel == self.num
+        if channel != self.num:
+            raise ProtocolError('basic.consume_ok returned '
+                                'channel # %d, expected %d' %
+                                (channel, self.num))
         con0 = consumer (self, frame.consumer_tag)
         self.add_consumer (con0)
         return con0
@@ -492,7 +507,10 @@ class channel:
         frame = spec.basic.get (0, queue, no_ack)
         self.send_frame (spec.FRAME_METHOD, frame)
         ftype, channel, frame = self.conn.expect_frame (spec.FRAME_METHOD, 'basic.get_ok', 'basic.empty')
-        assert channel == self.num
+        if channel != self.num:
+            raise ProtocolError('basic.get_ok returned '
+                                'channel # %d, expected %d' %
+                                (channel, self.num))
         return frame
 
     def basic_publish (self, payload, exchange='', routing_key='', mandatory=False, immediate=False, properties=None):
