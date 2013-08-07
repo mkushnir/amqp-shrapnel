@@ -366,7 +366,10 @@ class client:
         chan.set_exception_handler(self._exception_handler)
         self.send_frame (spec.FRAME_METHOD, chan.num, spec.channel.open (out_of_band))
         ftype, chan_num, frame = self.expect_frame (spec.FRAME_METHOD, 'channel.open_ok')
-        assert chan_num == chan.num
+        if chan_num != chan.num:
+            raise ProtocolError('channel.open_ok returned '
+                                'channel # %d, expected %d' %
+                                (chan_num, chan.num))
         self.channels[chan.num] = chan
         return chan
 
