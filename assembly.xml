@@ -1,8 +1,5 @@
-<assembly
-    xmlns="http://maven.apache.org/plugins/maven-assembly-plugin/assembly/1.1.0"
-    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+<assembly xmlns="http://maven.apache.org/plugins/maven-assembly-plugin/assembly/1.1.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
     xsi:schemaLocation="http://maven.apache.org/plugins/maven-assembly-plugin/assembly/1.1.0 http://maven.apache.org/xsd/assembly-1.1.0.xsd">
-
     <id>src</id>
     <baseDirectory>${finalName}</baseDirectory>
 
@@ -24,31 +21,8 @@
                 <exclude>assembly.xml</exclude>
                 <!-- exclude maven target directory -->
                 <exclude>/target/**</exclude>
-                <!-- exclude to specify lineEnding, directoryMode, fileMode (in separate file set) -->
-                <exclude>*.sh</exclude>
-                <!-- exclude to apply filtering (in separate file set) -->    
-                <exclude>*/**/__init__.py</exclude>
             </excludes>
-        </fileSet>
-        <!-- fix line ending for *.sh files -->
-        <fileSet>
-            <includes>
-                <include>*.sh</include>
-            </includes>
-            <!-- use to specify directory or file mode  -->
-            <!--
-            <directoryMode>0755</directoryMode>
-            <fileMode>0755</fileMode>
-            -->
             <lineEnding>unix</lineEnding>
         </fileSet>
-        <!-- filter __init__.py file to specify project version -->
-        <fileSet>
-            <includes>
-                <include>*/**/__init__.py</include>
-            </includes>
-            <filtered>true</filtered>
-        </fileSet>
     </fileSets>
-
 </assembly>
