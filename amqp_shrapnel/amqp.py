@@ -235,7 +235,6 @@ class client:
                     self._exception_handler(e)
         finally:
             self.notify_channels_of_close()
-            self.s.close()
 
     def unpack_frame (self):
         # unpack the frame sitting in self.buffer
@@ -341,21 +340,24 @@ class client:
     def close (self, reply_code=200, reply_text='normal shutdown', class_id=0, method_id=0):
         "http://www.rabbitmq.com/amqp-0-9-1-reference.html#connection.close"
         # close any open channels first.
-        self.notify_channels_of_close()
-        self.send_frame (
-            spec.FRAME_METHOD, 0,
-            spec.connection.close (reply_code, reply_text, class_id, method_id)
-            )
-        ftype, channel, frame = self.expect_frame (spec.FRAME_METHOD, 'connection.close_ok')
-        self._recv_loop_thread.shutdown()
-        self._recv_loop_thread.join()
-        self._recv_loop_thread = None
-        # try a double-close in case it had failed during the thread
-        # shutdown.
         try:
-            self.s.close()
-        except:
-            pass
+            self.notify_channels_of_close()
+            self.send_frame (
+                spec.FRAME_METHOD, 0,
+                spec.connection.close (reply_code, reply_text, class_id, method_id)
+                )
+            ftype, channel, frame = self.expect_frame (spec.FRAME_METHOD, 'connection.close_ok')
+
+        finally:
+            try:
+                self.s.close()
+            except:
+                pass
+
+            self._recv_loop_thread.shutdown()
+            self._recv_loop_thread.join()
+            self._recv_loop_thread = None
+
 
     def channel (self, out_of_band=''):
         """Create a new channel on this connection.
