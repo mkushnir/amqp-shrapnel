@@ -89,7 +89,8 @@ class client:
         self.next_content_consumer = None
         self.next_properties = None
         self.consumers = {}
-        self.last_send = coro.tsc_time.now_raw_posix_fsec()
+        self.last_sent_before = coro.tsc_time.now_raw_posix_fsec()
+        self.last_sent_after = coro.tsc_time.now_raw_posix_fsec()
         self.channels = {}
         self._exception_handler = None
         self._send_completion_handler = None
@@ -204,7 +205,7 @@ class client:
                 return ftype, channel, frame
 
     def secs_since_send (self):
-        return coro.tsc_time.now_raw_posix_fsec() - self.last_send
+        return coro.tsc_time.now_raw_posix_fsec() - self.last_sent_after
 
     def recv_loop (self):
         try:
@@ -328,12 +329,13 @@ class client:
             raise ProtocolError ("unhandled frame type: %r" % (ftype,))
         frame = struct.pack ('>BHL', ftype, channel, len (payload)) + payload + chr(spec.FRAME_END)
         #W ('>>> send_frame: %s ...\n' % (hd(frame),))
+        self.last_sent_before = coro.tsc_time.now_raw_posix_fsec()
         self._s_send_sema.acquire(1)
         try:
             self.s.send (frame)
         finally:
             self._s_send_sema.release(1)
-        self.last_send = coro.tsc_time.now_raw_posix_fsec()
+        self.last_sent_after = coro.tsc_time.now_raw_posix_fsec()
         if self._send_completion_handler:
             self._send_completion_handler(self, ftype, channel)
 
