@@ -321,9 +321,9 @@ class client:
         #W ('ftype=%s\n' % (ftype,))
         if ftype == spec.FRAME_METHOD:
             #dump_ob(ob)
-            payload = struct.pack ('>hh', *ob.id) + ob.pack()
+            payload = struct.pack ('>hh', *ob.id) + str(ob.pack())
         elif ftype in (spec.FRAME_HEADER, spec.FRAME_BODY, spec.FRAME_HEARTBEAT):
-            payload = ob
+            payload = str(ob)
         else:
             raise ProtocolError ("unhandled frame type: %r" % (ftype,))
         frame = struct.pack ('>BHL', ftype, channel, len (payload)) + payload + chr(spec.FRAME_END)
@@ -615,7 +615,7 @@ def pack_properties (props):
     for bit, name in items:
         if props.has_key (name):
             _, unpack, pack = sbp.name_map[name]
-            r.append (pack (props[name]))
+            r.append (str(pack (props[name])))
             flags |= 1<<bit
     return flags, ''.join (r)
 
