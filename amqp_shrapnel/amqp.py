@@ -76,7 +76,7 @@ class client:
             }
         }
 
-    def __init__ (self, auth, host, port=5672, virtual_host='/', heartbeat=0, consumer_cancel_notify=None):
+    def __init__ (self, auth, host, port=5672, virtual_host='/', heartbeat=0, consumer_cancel_notify=None, frame_max=0):
         self.port = port
         self.host = host
         self.auth = auth
@@ -96,6 +96,7 @@ class client:
         self._send_completion_handler = None
         self._recv_completion_handler = None
         self.consumer_cancel_notify = consumer_cancel_notify
+        self.frame_max = frame_max
         # XXX implement read/write "channels" (coro).
         self._recv_loop_thread = None
         self._s_recv_sema = coro.semaphore(1)
@@ -177,6 +178,8 @@ class client:
             # XXX
             ftype, channel, frame = self.expect_frame (spec.FRAME_METHOD, 'connection.tune')
             self.tune = frame
+            if self.frame_max:
+                self.tune.frame_max = min(self.tune.frame_max, self.frame_max)
             # I'm AMQP, and I approve this tune value.
             self.send_frame (
                 spec.FRAME_METHOD, 0,
