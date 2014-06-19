@@ -419,6 +419,10 @@ class channel:
         self.consumers = {}
         channel.counter += 1
         self._exception_handler = None
+        self._next_delivery_tag = 0
+        self._publish_cv = coro.condition_variable()
+        self._publish_thread = coro.spawn(self._publish_thread_loop)
+        self._pending_published = {}
 
     def set_exception_handler(self, h):
         self._exception_handler = h
@@ -520,7 +524,7 @@ class channel:
                                 (channel, self.num))
         return frame
 
-    def basic_publish (self, payload, exchange='', routing_key='', mandatory=False, immediate=False, properties=None):
+    def _basic_publish (self, payload, exchange='', routing_key='', mandatory=False, immediate=False, properties=None):
         "http://www.rabbitmq.com/amqp-0-9-1-reference.html#basic.publish"
         frame = spec.basic.publish (0, exchange, routing_key, mandatory, immediate)
         self.send_frame (spec.FRAME_METHOD, frame)
@@ -538,8 +542,64 @@ class channel:
         chunk = self.conn.tune.frame_max
         for i in range (0, size, chunk):
             self.send_frame (spec.FRAME_BODY, payload[i:i+chunk])
+
+
+    def _publish_thread_loop(self):
+        while True:
+            try:
+                self._publish_cv.wait()
+                while self._pending_published:
+                    ftype, channel, frame = self.conn.expect_frame(spec.FRAME_METHOD,
+                                                                   'basic.ack')
+                    #dump_ob(frame)
+                    if frame.multiple:
+                        p = [(dtag, s)
+                             for dtag, s in sorted(self._pending_published.iteritems())
+                             if dtag <= frame.delivery_tag]
+                        for dtag, s in p:
+                            del self._pending_published[dtag]
+                            s.release()
+
+                    else:
+                        s = self._pending_published[frame.delivery_tag]
+                        del self._pending_published[frame.delivery_tag]
+                        s.release()
+
+            except coro.Shutdown:
+                break
+
+
+    def basic_publish (self,
+                       payload,
+                       exchange='',
+                       routing_key='',
+                       mandatory=False,
+                       immediate=False,
+                       properties=None):
+
         if self.confirm_mode:
-            self.conn.expect_frame (spec.FRAME_METHOD, 'basic.ack')
+            self._next_delivery_tag += 1
+            dtag = self._next_delivery_tag
+            assert dtag not in self._pending_published
+            s = coro.inverted_semaphore(1)
+            self._pending_published[dtag] = s
+            #W('pending %d\n' % dtag);
+            self._basic_publish(payload,
+                                exchange,
+                                routing_key,
+                                mandatory,
+                                immediate,
+                                properties)
+            self._publish_cv.wake_one()
+            s.block_till_zero()
+        else:
+            self._basic_publish(payload,
+                                exchange,
+                                routing_key,
+                                mandatory,
+                                immediate,
+                                properties)
+
 
     def basic_ack (self, delivery_tag=0, multiple=False):
         "http://www.rabbitmq.com/amqp-0-9-1-reference.html#basic.ack"
@@ -592,6 +652,7 @@ class channel:
             self.forget_consumer(tag)
 
     def notify_of_close (self):
+        self._publish_thread.shutdown()
         self.notify_consumers_of_close()
 
     # rabbit mq extension
