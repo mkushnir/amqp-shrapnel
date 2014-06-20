@@ -549,6 +549,7 @@ class channel:
             try:
                 self._publish_cv.wait()
                 while self._pending_published:
+                    #W('_pending_published: %r\n' % self._pending_published)
                     ftype, channel, frame = self.conn.expect_frame(spec.FRAME_METHOD,
                                                                    'basic.ack')
                     #dump_ob(frame)
@@ -583,7 +584,7 @@ class channel:
             assert dtag not in self._pending_published
             s = coro.inverted_semaphore(1)
             self._pending_published[dtag] = s
-            #W('pending %d\n' % dtag);
+            #W('basic_publish pending >>> %d\n' % dtag);
             self._basic_publish(payload,
                                 exchange,
                                 routing_key,
@@ -592,6 +593,7 @@ class channel:
                                 properties)
             self._publish_cv.wake_one()
             s.block_till_zero()
+            #W('basic_publish pending <<< %d\n' % dtag);
         else:
             self._basic_publish(payload,
                                 exchange,
