@@ -1,19 +1,15 @@
 # -*- Mode: Python -*-
 
-from setuptools import setup, find_packages
+from distutils.core import setup
 import amqp_shrapnel
 
 setup (
     name              = 'amqp_shrapnel',
     version           = amqp_shrapnel.__version__,
-    packages          = find_packages(),
+    packages          = ['amqp_shrapnel'],
     author            = 'Sam Rushing',
     description       = "AMQP for Shrapnel",
     license           = "Simplified BSD",
     keywords          = "amqp shrapnel",
     url               = 'http://github.com/mkushnir/amqp-shrapnel/',
-    download_url      = "http://github.com/mkushnir/amqp-shrapnel/tarball/v0.5#egg=amqp-shrapnel",
-    install_requires  = ['coro'],
-    dependency_links  = ['http://github.com/ironport/shrapnel/tarball/master#egg=coro-0.1'],
-    zip_safe          = False
     )
